@@ -53,9 +53,9 @@ your-project/
 
 You can find the slash command and agent definitions in this repo:
 
-[Plan and Review Command](plan-and-review.md)
-[Planner Agent Definition](planner.md)
-[Critic Agent Definition](critic.md)
+- [Plan and Review Command](plan-and-review.md)
+- [Planner Agent Definition](planner.md)
+- [Critic Agent Definition](critic.md)
 
 You can either clone this repo and copy `.claude/` into your project, or create the files manually using the contents below.
 
