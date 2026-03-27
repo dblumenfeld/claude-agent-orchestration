@@ -57,6 +57,7 @@ cp planner.md ~/.claude/agents/
 cp critic.md ~/.claude/agents/
 cp plan-and-review.md ~/.claude/commands/
 cp review-plan.md ~/.claude/commands/
+cp implement-plan.md ~/.claude/commands/
 ```
 
 Your global layout should be:
@@ -64,13 +65,61 @@ Your global layout should be:
 ```
 ~/.claude/
   agents/
-    planner.md            ← planner agent definition
-    critic.md             ← adversarial critic agent definition
+    planner.md              ← planner agent definition
+    critic.md               ← adversarial critic agent definition
   commands/
-    plan-and-review.md    ← orchestrator slash command
-    review-plan.md        ← standalone review slash command
-    setup-orchestration.md ← self-update command
+    plan-and-review.md      ← orchestrator slash command
+    review-plan.md          ← standalone review slash command
+    implement-plan.md       ← plan execution slash command
+    setup-orchestration.md  ← self-update command
 ```
+
+### 3. (Optional) Auto-approve common tools
+
+By default, Claude Code prompts for approval on each tool call. To run `/implement-plan` without interruptions, add global permissions to `~/.claude/settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Edit",
+      "Write",
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(git:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(rm:*)",
+      "Bash(chmod:*)",
+      "Bash(swift:*)",
+      "Bash(cargo:*)",
+      "Bash(npm:*)",
+      "Bash(node:*)",
+      "Bash(forge:*)",
+      "Bash(python3:*)",
+      "Bash(curl:*)",
+      "Bash(sed:*)",
+      "Bash(sh:*)",
+      "Bash(bash:*)",
+      "Bash(test:*)",
+      "Bash(brew:*)",
+      "Bash(gh:*)",
+      "WebSearch"
+    ]
+  },
+  "skipDangerousModePermissionPrompt": true
+}
+```
+
+This applies globally to all Claude Code sessions, not just plan execution. Trim the list to match your toolchain — the build tools above (swift, cargo, npm, forge) are examples. Commands not in the list (e.g., `docker`, `kubectl`) will still prompt for approval.
 
 ---
 
@@ -99,6 +148,17 @@ To review any plan without the full loop:
 ```
 /review-plan path/to/plan.md
 ```
+
+### Executing an approved plan
+
+After approving, clear context and run the plan:
+
+```
+/clear
+/implement-plan .claude/plan-draft.md
+```
+
+Works with any plan file path, not just `plan-draft.md`.
 
 ### Updating
 
@@ -150,22 +210,13 @@ The Critic can only issue APPROVE when ALL of these are true:
 
 ---
 
-## Implementing the Approved Plan
+## End-to-End Workflow
 
-Once you approve the plan, start a fresh session to implement it:
-
-```bash
-# Option A: clear context in the current session
+```
+/plan-and-review docs/my-spec.md        ← adversarial plan loop (5-7 rounds)
+# approve the plan
 /clear
-
-# Option B: open a new Claude Code session entirely (recommended — harder reset)
-```
-
-Then:
-
-```
-Read `.claude/plan-draft.md` and implement it step by step.
-Confirm each step before moving to the next.
+/implement-plan .claude/plan-draft.md    ← execution (auto-approved with step 3 setup)
 ```
 
 ---
