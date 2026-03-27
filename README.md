@@ -1,18 +1,12 @@
 # Plan & Review — Adversarial Planning Workflow for Claude Code
 
-An automated spec-to-plan workflow using Claude Code Agent Teams. A Planner agent generates an implementation plan from a specification document. An independent Critic agent reviews it. They loop until the Critic approves (each loop spawns a fresh Critic with no context of previous reviews). You get the final plan to sign off before any code is written.
+An automated spec-to-plan workflow using Claude Code Agent Teams. A Planner agent generates an implementation plan from a specification document. An adversarial Critic agent stress-tests it. They loop — with the Critic verifying claims against the actual codebase and auditing prior feedback — until the plan meets a strict approval checklist. You get the final plan to sign off before any code is written.
 
 ## Why This Works
 
-The core insight is **context isolation**. When the same session that writes a plan also reviews it, the reviewer is polluted by the author's reasoning — it tends to rubber-stamp its own work. By spawning a fresh Critic each review round with zero context from the planning session, you get genuinely independent feedback. This is sometimes called adversarial review or the four-eyes principle.
+The core insight is **adversarial tension with accountability**. The Critic is designed to find problems, not approve plans. It must verify claims by reading actual source files, audit whether prior feedback was genuinely resolved (not just acknowledged), and meet a strict multi-point checklist before it can approve. The Planner, in turn, must address every issue individually — either fixing it or pushing back with reasoning. This creates a productive dialectic where neither side can hand-wave.
 
-The workflow encodes a pattern you'd otherwise do manually:
-1. Write plan in Session A
-2. Open fresh Session B, paste plan, get critique
-3. Copy critique back to Session A, revise
-4. Clear Session B, repeat
-
-This repo automates steps 2–4.
+The workflow enforces a minimum of 4 review rounds. Each new Critic receives the full history of prior feedback, so it can build on previous concerns rather than starting from scratch. This prevents the common failure mode where a fresh reviewer misses issues that were already identified and supposedly fixed.
 
 ---
 
@@ -39,51 +33,120 @@ Reload it:
 source ~/.zshrc
 ```
 
-### 2. Copy the `.claude/` directory into your project
+### 2. Install globally
+
+The commands and agents install to `~/.claude/` so they're available in every project.
+
+**Option A: Automatic (from any Claude Code session)**
 
 ```
-your-project/
-  .claude/
-    commands/
-      plan-and-review.md    ← slash command (the orchestrator)
-    agents/
-      planner.md            ← planner agent definition
-      critic.md             ← critic agent definition
+/setup-orchestration
 ```
 
-You can find the slash command and agent definitions in this repo:
+This pulls the latest files from GitHub and installs them globally.
 
-- [Plan and Review Command](plan-and-review.md)
-- [Planner Agent Definition](planner.md)
-- [Critic Agent Definition](critic.md)
+**Option B: Manual**
 
-You can either clone this repo and copy `.claude/` into your project, or create the files manually using the contents below.
+Clone this repo and copy the files:
+
+```bash
+git clone https://github.com/dblumenfeld/claude-agent-orchestration.git
+cd claude-agent-orchestration
+mkdir -p ~/.claude/agents ~/.claude/commands
+cp planner.md ~/.claude/agents/
+cp critic.md ~/.claude/agents/
+cp plan-and-review.md ~/.claude/commands/
+cp review-plan.md ~/.claude/commands/
+```
+
+Your global layout should be:
+
+```
+~/.claude/
+  agents/
+    planner.md            ← planner agent definition
+    critic.md             ← adversarial critic agent definition
+  commands/
+    plan-and-review.md    ← orchestrator slash command
+    review-plan.md        ← standalone review slash command
+    setup-orchestration.md ← self-update command
+```
 
 ---
 
 ## Usage
 
-Write your spec in a markdown file and save it locally.
+### Full plan-and-review loop
 
-Open Claude Code in your project root, then:
+Write your spec in a markdown file and save it locally. Open Claude Code in your project root, then:
 
 ```
 /plan-and-review path/to/your-spec.md
 ```
 
-Example:
-
-```
-/plan-and-review docs/feature-spec.md
-```
-
-The lead agent will:
+The orchestrator will:
 1. Spawn the Planner and pass it your spec
-2. Spawn a fresh Critic for each review round
-3. Route feedback back to the Planner until the Critic approves
-4. Present the final approved plan to you for sign-off
+2. Spawn a fresh Critic for each review round, passing the current plan and all prior feedback history
+3. Enforce a minimum of 4 rounds — early approvals are converted to revision requests
+4. Route feedback back to the Planner, requiring per-issue responses
+5. Accept the Critic's approval once the strict checklist is met (round 4+)
+6. Present the final plan to you for sign-off
 
-The draft plan is written to `.claude/plan-draft.md` and survives across rounds since it lives on disk, not in any agent's context.
+### Standalone review
+
+To review any plan without the full loop:
+
+```
+/review-plan path/to/plan.md
+```
+
+### Updating
+
+To pull the latest versions from GitHub:
+
+```
+/setup-orchestration
+```
+
+---
+
+## How It Works
+
+```
+You
+ └── Lead (orchestrator)
+      ├── Planner (stays alive, revises plan-draft.md each round)
+      └── Critic-1 (reviews, shut down — feedback archived)
+      └── Critic-2 (reviews with round 1 history, shut down)
+      └── Critic-3 (reviews with rounds 1-2 history, shut down)
+      └── Critic-N (reviews with full history → APPROVE if checklist met)
+           └── Lead presents final plan to you
+```
+
+Each Critic is spawned fresh but receives the **full critique history** from all prior rounds. This means Critic-3 knows what Critic-1 and Critic-2 found, and can verify those issues were actually resolved rather than just reworded.
+
+The Planner maintains a **Revision Log** at the end of the plan, tracking what changed each round and what was pushed back on. This creates an audit trail the Critic can reference.
+
+The plan file on disk (`.claude/plan-draft.md`) is the shared state between rounds.
+
+### Critic approval checklist
+
+The Critic can only issue APPROVE when ALL of these are true:
+- Every spec requirement has a corresponding plan step detailed enough to implement without guesswork
+- At least 5 codebase claims verified by reading actual files with no contradictions found
+- No critical or high-severity issues remain
+- All prior critic feedback substantively addressed (not just reworded)
+- Error handling and edge cases explicitly covered for I/O, parsing, and external calls
+- Plan includes a verification/testing strategy for each phase
+
+### Typical convergence
+
+| Round | What happens |
+|-------|-------------|
+| 1 | Critic finds 5-8 issues (codebase checks reveal wrong assumptions, missing error handling, spec gaps). Planner revises, pushes back on 1-2. |
+| 2 | Critic audits prior feedback, finds some not fully fixed, discovers new issues from deeper reading. Planner revises. |
+| 3 | Critic confirms most prior issues fixed, finds new edge cases and testing gaps. Planner revises. |
+| 4+ | First round eligible for APPROVE. Strict checklist means approval typically lands rounds 5-7. |
 
 ---
 
@@ -98,57 +161,18 @@ Once you approve the plan, start a fresh session to implement it:
 # Option B: open a new Claude Code session entirely (recommended — harder reset)
 ```
 
-Then type the prompt:
+Then:
 
 ```
 Read `.claude/plan-draft.md` and implement it step by step.
 Confirm each step before moving to the next.
 ```
 
-If you want a slash command for this too, create `.claude/commands/implement-plan.md`:
-
-```markdown
----
-description: Implement the approved plan from .claude/plan-draft.md
-allowed-tools: Read, Write, Edit, Bash, Glob, Grep
----
-
-Read `.claude/plan-draft.md` and implement it step by step.
-After completing each step, confirm it before moving to the next.
-```
-
-Then your full end-to-end workflow is:
-
-```
-/plan-and-review docs/my-spec.md   ← plan + review loop
-# approve the plan
-/clear
-/implement-plan                     ← execution
-```
-
----
-
-## How It Works
-
-```
-You
- └── Lead (orchestrator)
-      ├── Planner (stays alive, revises plan-draft.md each round)
-      └── Critic-1 (spawned fresh, reviews, shut down)
-      └── Critic-2 (spawned fresh, reviews, shut down)
-      └── Critic-N (spawned fresh, reviews, shut down → APPROVE)
-           └── Lead presents final plan to you
-```
-
-The Critic is re-spawned each round rather than cleared in place. This guarantees a completely clean context for every review — the Critic only ever sees the current version of the plan, with no memory of previous rounds or the planning process.
-
-The plan file on disk (`.claude/plan-draft.md`) is the only shared state between rounds.
-
 ---
 
 ## Token Cost
 
-Agent Teams use significantly more tokens than a single session. Each teammate is a full independent Claude instance. For a 3-round loop you're looking at roughly 5–8x the token cost of a single session doing the same work.
+Agent Teams use significantly more tokens than a single session. Each teammate is a full independent Claude instance. With the minimum 4-round loop and typical 5-7 round convergence, expect roughly 10-15x the token cost of a single session.
 
 This is worthwhile for non-trivial plans where the cost of implementing a flawed plan far exceeds the cost of getting it right first.
 
@@ -156,6 +180,4 @@ This is worthwhile for non-trivial plans where the cost of implementing a flawed
 
 ## Background
 
-For more about Claude Code agent teams, please refer to the official documentation: https://code.claude.com/docs/en/agent-teams
-
-This pattern is sometimes called **adversarial review** or **multi-agent debate** in the AI research literature. The core property — an independent reviewer with no context from the planning session — maps to the **four-eyes principle** used in software engineering and regulated industries: any significant work must pass through a genuinely independent second set of eyes before proceeding.
+For more about Claude Code agent teams, refer to the official documentation: https://code.claude.com/docs/en/agent-teams
