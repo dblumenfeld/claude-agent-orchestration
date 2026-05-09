@@ -1,4 +1,5 @@
 ---
+name: planner
 description: Generates and iteratively refines an implementation plan from a spec
 allowed-tools: Read, Write
 ---
