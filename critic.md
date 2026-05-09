@@ -1,4 +1,5 @@
 ---
+name: critic
 description: Reviews a plan and returns structured feedback with a verdict
 allowed-tools: Read, Glob, Grep, Bash(cat:*), Bash(find:*), Bash(ls:*)
 ---
